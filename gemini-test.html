@@ -174,8 +174,16 @@
       pointer-events: none;
     }
 
-    .mic-btn {
+    .mic-wrap {
       pointer-events: auto;
+      position: relative;
+      z-index: 110;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mic-btn {
       min-width: 72px;
       height: 44px;
       padding: 0 20px;
@@ -193,13 +201,14 @@
                   background 0.2s ease,
                   min-width 0.3s ease;
       position: relative;
-      z-index: 110;
+      z-index: 1;
       user-select: none;
       font-size: 0.9rem;
       font-weight: 500;
+      pointer-events: none; /* finger hits the switch overlay instead */
     }
 
-    .mic-btn:active,
+    .mic-wrap:active .mic-btn,
     .mic-btn.holding {
       transform: scale(0.94);
       background: #1c1c1e;
@@ -208,6 +217,9 @@
     .mic-btn.thinking {
       min-width: 120px;
       background: #1c1c1e;
+    }
+
+    .mic-wrap.busy .mic-switch-hit {
       pointer-events: none;
     }
 
@@ -216,16 +228,31 @@
       box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 4px 24px rgba(0, 0, 0, 0.35);
     }
 
-    /* Invisible iOS switch for haptic feedback only */
-    .ios-haptic {
-      position: fixed;
-      left: -9999px;
-      top: 0;
-      width: 51px;
-      height: 31px;
-      opacity: 0;
-      pointer-events: none;
+    /* Invisible native iOS switch ON TOP of mic — real control = real haptic */
+    .mic-switch-hit {
+      position: absolute;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
       margin: 0;
+      opacity: 0.02;
+      z-index: 6;
+      cursor: pointer;
+      -webkit-appearance: auto;
+      appearance: auto;
+    }
+
+    /* Off-screen switch + label for programmatic haptic (label.click) */
+    #caeloHapticWrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 44px;
+      height: 44px;
+      overflow: hidden;
+      z-index: 2147483646;
+      opacity: 0.02;
+      pointer-events: none;
     }
 
     .mic-btn svg {
@@ -432,26 +459,29 @@
     <div class="liquid-veil-2" id="veil2"></div>
   </div>
 
-  <!-- Hidden switch: toggled only to trigger iOS haptic, never visible -->
-  <input type="checkbox" class="ios-haptic" id="iosHaptic" tabindex="-1" aria-hidden="true" />
-
-  <div class="bottom-bar">
-    <button class="mic-btn" id="micBtn" aria-label="Tap to toggle or hold to talk">
-      <svg class="icon" viewBox="0 0 24 24">
-        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
-      </svg>
-      <div class="spinner"></div>
-      <span class="label">Thinking</span>
-    </button>
+  <!-- iOS 18+ haptic: label.click() on native switch (same as CaeloX) -->
+  <div id="caeloHapticWrap" aria-hidden="true">
+    <input type="checkbox" switch id="caeloHapticSwitch" />
+    <label id="caeloHapticLabel" for="caeloHapticSwitch">.</label>
   </div>
 
-  <!-- iOS Safari navigator.vibrate polyfill -->
-  <script type="module">
-    import "https://cdn.jsdelivr.net/npm/ios-vibrator-pro-max@3.0.3/dist/index.js";
-  </script>
+  <div class="bottom-bar">
+    <div class="mic-wrap" id="micWrap">
+      <!-- Finger hits this real iOS switch → system haptic -->
+      <input type="checkbox" switch class="mic-switch-hit" id="micSwitchHit" tabindex="-1" aria-hidden="true" />
+      <button class="mic-btn" id="micBtn" aria-label="Tap to toggle or hold to talk" type="button">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
+        </svg>
+        <div class="spinner"></div>
+        <span class="label">Thinking</span>
+      </button>
+    </div>
+  </div>
 
   <script>
     const btn = document.getElementById("micBtn");
+    const micWrap = document.getElementById("micWrap");
     const glassLayer = document.getElementById("glassLayer");
     const veil = document.getElementById("veil");
     const veil2 = document.getElementById("veil2");
@@ -480,31 +510,28 @@
     let finalTranscript = "";
     let interimTranscript = "";
     const HOLD_MS = 280; // longer than this = hold, shorter = tap
-    const iosHaptic = document.getElementById("iosHaptic");
-
     function showError(msg) {
       errorToast.textContent = msg;
       errorToast.classList.add("show");
       setTimeout(() => errorToast.classList.remove("show"), 4000);
     }
 
-    // Android: native. iOS 18+: ios-vibrator-pro-max polyfill. Must run in user gesture.
-    function vibratePulse(ms) {
-      const dur = ms || 40;
+    /* Same as CaeloX: iOS 18+ only fires haptic when LABEL of <input switch> is clicked */
+    function vibratePulse(type) {
       try {
-        if (typeof navigator.vibrate === "function") {
-          navigator.vibrate(0); // cancel any previous
-          navigator.vibrate(dur);
+        const label = document.getElementById("caeloHapticLabel");
+        if (label) {
+          try {
+            label.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+          } catch (_) {}
+          try { label.click(); } catch (_) {}
+        }
+        if (navigator.vibrate) {
+          if (type === "heavy") navigator.vibrate([30, 20, 40]);
+          else if (type === "medium") navigator.vibrate(25);
+          else navigator.vibrate(16);
         }
       } catch (_) {}
-      // Extra path: flip hidden switch (iOS toggle haptic)
-      if (iosHaptic) {
-        try {
-          iosHaptic.checked = !iosHaptic.checked;
-          iosHaptic.dispatchEvent(new Event("input", { bubbles: true }));
-          iosHaptic.dispatchEvent(new Event("change", { bubbles: true }));
-        } catch (_) {}
-      }
     }
 
     // Strip markdown stars / common formatting from Gemini replies
@@ -746,11 +773,13 @@
       // No speech → no Thinking, no full animation
       if (!spoken) {
         busy = false;
+        if (micWrap) micWrap.classList.remove("busy");
         btn.classList.remove("holding", "listening");
         return;
       }
 
       busy = true;
+      if (micWrap) micWrap.classList.add("busy");
       setTimeout(() => {
         runThinkingThenWave(spoken);
       }, 1550);
@@ -761,20 +790,19 @@
       e.preventDefault();
       if (busy) return;
 
-      // Haptic immediately on press (user gesture — required for iOS)
-      vibratePulse(35);
+      // Haptic on press (native switch overlay already fires; this adds Android + label path)
+      vibratePulse("medium");
 
       pressStartedAt = Date.now();
       isHoldMode = false;
 
       clearTimeout(pressTimer);
       pressTimer = setTimeout(async () => {
-        // Became a hold
         isHoldMode = true;
-        if (continuousOn) return; // already listening from tap mode
+        if (continuousOn) return;
         holding = true;
         btn.classList.add("holding");
-        vibratePulse(50); // second pulse when hold is confirmed
+        vibratePulse("heavy");
         await beginListeningSession();
       }, HOLD_MS);
     }
@@ -788,7 +816,7 @@
       // TAP
       if (!isHoldMode && duration < HOLD_MS) {
         if (busy) return;
-        vibratePulse(40);
+        vibratePulse("medium");
 
         if (!continuousOn) {
           continuousOn = true;
@@ -856,17 +884,27 @@
         glassLayer.classList.remove("active");
         hint.classList.remove("hide");
         busy = false;
+        if (micWrap) micWrap.classList.remove("busy");
       }, 1550);
     }
 
-    btn.addEventListener("mousedown", onPressStart);
+    const pressTarget = micWrap || btn;
+    pressTarget.addEventListener("mousedown", onPressStart);
     window.addEventListener("mouseup", onPressEnd);
     window.addEventListener("mouseleave", onPressEnd);
 
-    btn.addEventListener("touchstart", onPressStart, { passive: false });
+    pressTarget.addEventListener("touchstart", onPressStart, { passive: false });
     window.addEventListener("touchend", onPressEnd);
     window.addEventListener("touchcancel", onPressEnd);
-    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    pressTarget.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // Extra: change on the overlay switch also fires haptic (finger on real control)
+    const micSwitch = document.getElementById("micSwitchHit");
+    if (micSwitch) {
+      micSwitch.addEventListener("change", () => {
+        vibratePulse("light");
+      });
+    }
 
     // API key is hardcoded above — nothing to configure
   </script>
