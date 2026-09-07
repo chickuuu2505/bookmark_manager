@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,57 +62,11 @@
       66% { transform: translate(-30px, 30px) scale(0.94); }
     }
 
-    .key-bar {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 200;
-      padding: 12px 16px;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      background: rgba(0, 0, 0, 0.35);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .key-bar input {
-      flex: 1;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.08);
-      color: #fff;
-      font-size: 13px;
-      outline: none;
-    }
-
-    .key-bar input::placeholder {
-      color: rgba(255, 255, 255, 0.4);
-    }
-
-    .key-bar select {
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-      font-size: 12px;
-      max-width: 160px;
-    }
-
-    .key-bar select option {
-      background: #1c1c1e;
-      color: #fff;
-    }
-
     .page {
       position: relative;
       z-index: 1;
       min-height: 100vh;
-      padding: 90px 26px 180px;
+      padding: 60px 26px 180px;
       transition: filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
@@ -436,7 +391,7 @@
 
     .error-toast {
       position: fixed;
-      top: 70px;
+      top: 24px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(180, 40, 40, 0.9);
@@ -459,16 +414,6 @@
   <div class="bg-blob blob-1"></div>
   <div class="bg-blob blob-2"></div>
   <div class="bg-blob blob-3"></div>
-
-  <div class="key-bar">
-    <input id="apiKey" type="password" placeholder="Paste Gemini API key" autocomplete="off" />
-    <select id="model">
-      <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite</option>
-      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-    </select>
-  </div>
 
   <div class="page" id="page">
     <h1 id="title">Voice to Gemini</h1>
@@ -500,6 +445,11 @@
     </button>
   </div>
 
+  <!-- iOS Safari navigator.vibrate polyfill -->
+  <script type="module">
+    import "https://cdn.jsdelivr.net/npm/ios-vibrator-pro-max@3.0.3/dist/index.js";
+  </script>
+
   <script>
     const btn = document.getElementById("micBtn");
     const glassLayer = document.getElementById("glassLayer");
@@ -512,8 +462,9 @@
     const tagEl = document.getElementById("tag");
     const liveEl = document.getElementById("liveTranscript");
     const errorToast = document.getElementById("errorToast");
-    const apiKeyInput = document.getElementById("apiKey");
-    const modelSelect = document.getElementById("model");
+    // Built-in — not editable in the UI
+    const GEMINI_API_KEY = "AQ.Ab8RN6LtZlV1nO5sYle0vUIbvhTn7ZR1znwcxV0wCiDSEFHNpw";
+    const GEMINI_MODEL = "gemini-3.5-flash-lite";
 
     let holding = false;
     let busy = false;
@@ -537,13 +488,22 @@
       setTimeout(() => errorToast.classList.remove("show"), 4000);
     }
 
-    // Android vibrate + invisible iOS switch toggle (during user gesture)
-    function vibratePulse() {
+    // Android: native. iOS 18+: ios-vibrator-pro-max polyfill. Must run in user gesture.
+    function vibratePulse(ms) {
+      const dur = ms || 40;
       try {
-        if (navigator.vibrate) navigator.vibrate(25);
+        if (typeof navigator.vibrate === "function") {
+          navigator.vibrate(0); // cancel any previous
+          navigator.vibrate(dur);
+        }
       } catch (_) {}
+      // Extra path: flip hidden switch (iOS toggle haptic)
       if (iosHaptic) {
-        iosHaptic.checked = !iosHaptic.checked;
+        try {
+          iosHaptic.checked = !iosHaptic.checked;
+          iosHaptic.dispatchEvent(new Event("input", { bubbles: true }));
+          iosHaptic.dispatchEvent(new Event("change", { bubbles: true }));
+        } catch (_) {}
       }
     }
 
@@ -695,12 +655,9 @@
     }
 
     async function askGemini(text) {
-      const apiKey = apiKeyInput.value.trim();
-      const model = modelSelect.value;
-      if (!apiKey) throw new Error("Paste your Gemini API key at the top first");
       if (!text) throw new Error("No speech detected — try again");
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
       const body = {
         contents: [{ role: "user", parts: [{ text }] }]
       };
@@ -766,7 +723,6 @@
         showError("Speech recognition not supported — use Chrome");
         return false;
       }
-      vibratePulse();
       expandHalfGlass();
       startListening();
       return true;
@@ -805,6 +761,9 @@
       e.preventDefault();
       if (busy) return;
 
+      // Haptic immediately on press (user gesture — required for iOS)
+      vibratePulse(35);
+
       pressStartedAt = Date.now();
       isHoldMode = false;
 
@@ -815,6 +774,7 @@
         if (continuousOn) return; // already listening from tap mode
         holding = true;
         btn.classList.add("holding");
+        vibratePulse(50); // second pulse when hold is confirmed
         await beginListeningSession();
       }, HOLD_MS);
     }
@@ -828,14 +788,13 @@
       // TAP
       if (!isHoldMode && duration < HOLD_MS) {
         if (busy) return;
+        vibratePulse(40);
 
         if (!continuousOn) {
-          // turn ON
           continuousOn = true;
           btn.classList.add("listening");
           await beginListeningSession();
         } else {
-          // turn OFF → process speech
           continuousOn = false;
           btn.classList.remove("listening");
           holding = false;
@@ -909,11 +868,7 @@
     window.addEventListener("touchcancel", onPressEnd);
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    const savedKey = localStorage.getItem("gemini_api_key");
-    if (savedKey) apiKeyInput.value = savedKey;
-    apiKeyInput.addEventListener("change", () => {
-      localStorage.setItem("gemini_api_key", apiKeyInput.value.trim());
-    });
+    // API key is hardcoded above — nothing to configure
   </script>
 </body>
 </html>
