@@ -1,312 +1,809 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Gemini API Chat Test</title>
-<style>
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    max-width: 700px;
-    margin: 40px auto;
-    padding: 0 20px;
-    background: #f5f5f7;
-    color: #1d1d1f;
-  }
-  h2 { margin-bottom: 4px; }
-  .sub { color: #666; font-size: 14px; margin-bottom: 20px; }
-  #apiKey, #model {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    box-sizing: border-box;
-    font-size: 14px;
-  }
-  #chatBox {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    height: 400px;
-    overflow-y: auto;
-    padding: 14px;
-    margin-bottom: 10px;
-  }
-  .msg { margin-bottom: 12px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
-  .msg .role { font-weight: 600; font-size: 13px; display: block; margin-bottom: 2px; }
-  .user .role { color: #0071e3; }
-  .model .role { color: #34873f; }
-  .error { color: #c0392b; }
-  #inputRow { display: flex; gap: 8px; }
-  #userInput {
-    flex: 1;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid #ccc;
-    font-size: 14px;
-  }
-  button {
-    padding: 10px 18px;
-    border: none;
-    border-radius: 8px;
-    background: #0071e3;
-    color: white;
-    font-size: 14px;
-    cursor: pointer;
-  }
-  button:disabled { background: #999; cursor: not-allowed; }
-  .status { font-size: 12px; color: #888; margin-top: 6px; }
-  .cursor {
-    display: inline-block;
-    width: 2px;
-    height: 1.05em;
-    background: #34873f;
-    margin-left: 1px;
-    vertical-align: text-bottom;
-    animation: blink 0.7s step-end infinite;
-  }
-  @keyframes blink {
-    50% { opacity: 0; }
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Liquid Glass · Gemini Voice</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #0f0c29 0%, #302b63 45%, #24243e 100%);
+      color: #1c1c1e;
+      position: relative;
+      touch-action: manipulation;
+    }
+
+    .bg-blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(100px);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .blob-1 {
+      width: 480px;
+      height: 480px;
+      background: #6c5ce7;
+      top: -120px;
+      left: -140px;
+      animation: float 20s ease-in-out infinite;
+    }
+    .blob-2 {
+      width: 400px;
+      height: 400px;
+      background: #00cec9;
+      bottom: -60px;
+      right: -80px;
+      animation: float 24s ease-in-out infinite reverse;
+    }
+    .blob-3 {
+      width: 320px;
+      height: 320px;
+      background: #fd79a8;
+      top: 40%;
+      left: 30%;
+      animation: float 17s ease-in-out infinite 1.5s;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(40px, -50px) scale(1.06); }
+      66% { transform: translate(-30px, 30px) scale(0.94); }
+    }
+
+    .key-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 200;
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .key-bar input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .key-bar input::placeholder {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .key-bar select {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      font-size: 12px;
+      max-width: 160px;
+    }
+
+    .key-bar select option {
+      background: #1c1c1e;
+      color: #fff;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 90px 26px 180px;
+      transition: filter 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .page.blurred {
+      filter: blur(0.8px);
+    }
+
+    h1 {
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      color: #fff;
+      transition: opacity 0.5s ease;
+    }
+
+    .user-question {
+      font-size: 1.05rem;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.95);
+      font-weight: 600;
+      margin-bottom: 14px;
+      max-width: 560px;
+      transition: opacity 0.5s ease;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .user-question::before {
+      content: "You · ";
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 500;
+      font-size: 0.85rem;
+    }
+
+    .random-text {
+      font-size: 1.02rem;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.78);
+      margin-bottom: 16px;
+      max-width: 560px;
+      transition: opacity 0.5s ease;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .random-text.has-reply::before {
+      content: "Gemini · ";
+      display: block;
+      color: rgba(165, 180, 252, 0.85);
+      font-weight: 600;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(10px);
+      transition: opacity 0.5s ease;
+    }
+
+    .page.fade-out-slow h1,
+    .page.fade-out-slow .random-text,
+    .page.fade-out-slow .user-question,
+    .page.fade-out-slow .tag {
+      transition: opacity 1s ease;
+    }
+
+    .live-transcript {
+      position: fixed;
+      left: 24px;
+      right: 24px;
+      bottom: 160px;
+      z-index: 95;
+      text-align: center;
+      font-size: 0.95rem;
+      color: rgba(255, 255, 255, 0.85);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .live-transcript.show {
+      opacity: 1;
+    }
+
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 140px;
+      z-index: 100;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 36px;
+      pointer-events: none;
+    }
+
+    .mic-btn {
+      pointer-events: auto;
+      min-width: 72px;
+      height: 44px;
+      padding: 0 20px;
+      border-radius: 999px;
+      border: none;
+      background: #2c2c2e;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  background 0.2s ease,
+                  min-width 0.3s ease;
+      position: relative;
+      z-index: 110;
+      user-select: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .mic-btn:active,
+    .mic-btn.holding {
+      transform: scale(0.94);
+      background: #1c1c1e;
+    }
+
+    .mic-btn.thinking {
+      min-width: 120px;
+      background: #1c1c1e;
+      pointer-events: none;
+    }
+
+    .mic-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: #fff;
+      flex-shrink: 0;
+    }
+
+    .mic-btn .label { display: none; white-space: nowrap; }
+    .mic-btn.thinking .label { display: inline; }
+    .mic-btn.thinking .icon { display: none; }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .mic-btn.thinking .spinner { display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .glass-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    .glass-layer.active { opacity: 1; }
+
+    .liquid-veil {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 180%;
+      height: 0;
+      transform: translateX(-50%);
+      border-radius: 50% 50% 0 0 / 32% 32% 0 0;
+      background: radial-gradient(
+        ellipse 85% 75% at 50% 100%,
+        rgba(255, 255, 255, 0.28) 0%,
+        rgba(255, 255, 255, 0.14) 30%,
+        rgba(255, 255, 255, 0.06) 55%,
+        rgba(255, 255, 255, 0.02) 75%,
+        transparent 100%
+      );
+      backdrop-filter: blur(40px) saturate(140%);
+      -webkit-backdrop-filter: blur(40px) saturate(140%);
+      -webkit-mask-image: linear-gradient(to top, #000 0%, #000 55%, rgba(0,0,0,0.6) 75%, rgba(0,0,0,0.25) 88%, transparent 100%);
+      mask-image: linear-gradient(to top, #000 0%, #000 55%, rgba(0,0,0,0.6) 75%, rgba(0,0,0,0.25) 88%, transparent 100%);
+      will-change: height, opacity, transform;
+      transition:
+        height 1.5s cubic-bezier(0.25, 0.1, 0.25, 1),
+        border-radius 1.5s cubic-bezier(0.25, 0.1, 0.25, 1),
+        opacity 1.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+      opacity: 0;
+    }
+
+    .liquid-veil.half {
+      height: 50%;
+      border-radius: 48% 48% 0 0 / 26% 26% 0 0;
+      opacity: 1;
+    }
+
+    .liquid-veil.full {
+      height: 108%;
+      border-radius: 42% 42% 0 0 / 18% 18% 0 0;
+      opacity: 1;
+    }
+
+    .liquid-veil.half.breathe {
+      animation: breathe 2.5s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      0%, 100% { transform: translateX(-50%) scaleY(1); opacity: 1; }
+      50% { transform: translateX(-50%) scaleY(1.04); opacity: 0.92; }
+    }
+
+    .liquid-veil-2 {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 220%;
+      height: 0;
+      transform: translateX(-50%);
+      border-radius: 50% 50% 0 0 / 38% 38% 0 0;
+      background: radial-gradient(
+        ellipse 95% 85% at 50% 100%,
+        rgba(255, 255, 255, 0.14) 0%,
+        rgba(255, 255, 255, 0.05) 40%,
+        transparent 75%
+      );
+      backdrop-filter: blur(28px) saturate(130%);
+      -webkit-backdrop-filter: blur(28px) saturate(130%);
+      -webkit-mask-image: linear-gradient(to top, #000 0%, #000 50%, rgba(0,0,0,0.5) 72%, rgba(0,0,0,0.15) 88%, transparent 100%);
+      mask-image: linear-gradient(to top, #000 0%, #000 50%, rgba(0,0,0,0.5) 72%, rgba(0,0,0,0.15) 88%, transparent 100%);
+      will-change: height, opacity, transform;
+      transition:
+        height 1.5s cubic-bezier(0.25, 0.1, 0.25, 1) 0.04s,
+        opacity 1.5s cubic-bezier(0.25, 0.1, 0.25, 1) 0.04s;
+      opacity: 0;
+    }
+
+    .liquid-veil-2.half { height: 54%; opacity: 1; }
+    .liquid-veil-2.full { height: 115%; opacity: 1; }
+
+    .liquid-veil-2.half.breathe {
+      animation: breathe2 2.5s ease-in-out infinite 0.1s;
+    }
+
+    @keyframes breathe2 {
+      0%, 100% { transform: translateX(-50%) scaleY(1); opacity: 1; }
+      50% { transform: translateX(-50%) scaleY(1.06); opacity: 0.88; }
+    }
+
+    .particle {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+      pointer-events: none;
+      opacity: 0;
+      bottom: 52px;
+      left: 50%;
+    }
+
+    .particle.go {
+      animation: rise 1.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes rise {
+      0% { transform: translate(-50%, 0) scale(1); opacity: 0.7; }
+      100% { transform: translate(calc(-50% + var(--x)), -260px) scale(0.15); opacity: 0; }
+    }
+
+    .hint {
+      position: fixed;
+      bottom: 100px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.8rem;
+      color: rgba(255, 255, 255, 0.45);
+      z-index: 90;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .hint.hide { opacity: 0; }
+
+    .error-toast {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(180, 40, 40, 0.9);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 300;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+      max-width: 90%;
+      text-align: center;
+    }
+
+    .error-toast.show { opacity: 1; }
+  </style>
 </head>
 <body>
+  <div class="bg-blob blob-1"></div>
+  <div class="bg-blob blob-2"></div>
+  <div class="bg-blob blob-3"></div>
 
-<h2>Gemini API Chat Test</h2>
-<div class="sub">Local test page — API key stays in this tab only. Text streams in with a live typing animation.</div>
+  <div class="key-bar">
+    <input id="apiKey" type="password" placeholder="Paste Gemini API key" autocomplete="off" />
+    <select id="model">
+      <option value="gemini-3.5-flash-lite" selected>gemini-3.5-flash-lite</option>
+      <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+    </select>
+  </div>
 
-<input id="apiKey" type="password" placeholder="Paste your Gemini API key here">
-<select id="model">
-  <option value="gemini-3.6-flash">gemini-3.6-flash (recommended, free tier)</option>
-  <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (free tier)</option>
-  <option value="gemini-3.5-flash">gemini-3.5-flash (free tier)</option>
-  <option value="gemini-2.5-flash">gemini-2.5-flash (free tier)</option>
-</select>
+  <div class="page" id="page">
+    <h1 id="title">Voice to Gemini</h1>
+    <p class="random-text" id="text">
+      Hold the mic and speak. Your words are converted to text, sent to gemini-3.5-flash-lite, and the reply appears here.
+    </p>
+    <span class="tag" id="tag">hold mic to talk</span>
+  </div>
 
-<div id="chatBox"></div>
+  <div class="live-transcript" id="liveTranscript"></div>
+  <div class="hint" id="hint">hold mic · speak · release</div>
+  <div class="error-toast" id="errorToast"></div>
 
-<div id="inputRow">
-  <input id="userInput" type="text" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage();">
-  <button id="sendBtn" onclick="sendMessage()">Send</button>
-</div>
-<div class="status" id="status"></div>
+  <div class="glass-layer" id="glassLayer">
+    <div class="liquid-veil" id="veil"></div>
+    <div class="liquid-veil-2" id="veil2"></div>
+  </div>
 
-<script>
-let history = [];
+  <div class="bottom-bar">
+    <button class="mic-btn" id="micBtn" aria-label="Hold to speak">
+      <svg class="icon" viewBox="0 0 24 24">
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
+      </svg>
+      <div class="spinner"></div>
+      <span class="label">Thinking</span>
+    </button>
+  </div>
 
-function escapeHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
-}
+  <script>
+    const btn = document.getElementById("micBtn");
+    const glassLayer = document.getElementById("glassLayer");
+    const veil = document.getElementById("veil");
+    const veil2 = document.getElementById("veil2");
+    const page = document.getElementById("page");
+    const hint = document.getElementById("hint");
+    const textEl = document.getElementById("text");
+    const titleEl = document.getElementById("title");
+    const tagEl = document.getElementById("tag");
+    const liveEl = document.getElementById("liveTranscript");
+    const errorToast = document.getElementById("errorToast");
+    const apiKeyInput = document.getElementById("apiKey");
+    const modelSelect = document.getElementById("model");
 
-function appendMessage(role, text) {
-  const chatBox = document.getElementById('chatBox');
-  const div = document.createElement('div');
-  div.className = 'msg ' + role;
-  div.innerHTML = `<span class="role">${role === 'user' ? 'You' : 'Gemini'}</span>${escapeHtml(text)}`;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-  return div;
-}
+    let holding = false;
+    let busy = false;
+    let breatheTimer = null;
+    let particles = [];
+    let micStream = null;
+    let recognition = null;
+    let isRecognizing = false;
+    let finalTranscript = "";
+    let interimTranscript = "";
 
-function appendError(text) {
-  const chatBox = document.getElementById('chatBox');
-  const div = document.createElement('div');
-  div.className = 'msg error';
-  div.textContent = 'Error: ' + text;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
+    function showError(msg) {
+      errorToast.textContent = msg;
+      errorToast.classList.add("show");
+      setTimeout(() => errorToast.classList.remove("show"), 4000);
+    }
 
-function createStreamingMessage() {
-  const chatBox = document.getElementById('chatBox');
-  const div = document.createElement('div');
-  div.className = 'msg model';
-  div.innerHTML = `<span class="role">Gemini</span><span class="content"></span><span class="cursor"></span>`;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-  return {
-    div,
-    contentEl: div.querySelector('.content'),
-    cursorEl: div.querySelector('.cursor')
-  };
-}
+    function spawnParticles() {
+      particles.forEach(p => p.remove());
+      particles = [];
+      for (let i = 0; i < 7; i++) {
+        const p = document.createElement("div");
+        p.className = "particle";
+        p.style.setProperty("--x", ((Math.random() - 0.5) * 120) + "px");
+        p.style.animationDelay = (Math.random() * 0.25) + "s";
+        glassLayer.appendChild(p);
+        p.offsetHeight;
+        p.classList.add("go");
+        particles.push(p);
+        p.addEventListener("animationend", () => p.remove());
+      }
+    }
 
-// Smooth typewriter: queue of characters that get revealed very fast
-class Typewriter {
-  constructor(contentEl) {
-    this.contentEl = contentEl;
-    this.queue = '';
-    this.displayed = '';
-    this.running = false;
-    this.charsPerTick = 3;   // how many chars to reveal each frame (higher = faster)
-    this.intervalMs = 12;    // ~80 fps feel
-  }
+    function fadeOutTextSlow() {
+      page.classList.add("fade-out-slow");
+      textEl.style.opacity = "0";
+      titleEl.style.opacity = "0";
+      tagEl.style.opacity = "0";
+    }
 
-  add(text) {
-    this.queue += text;
-    if (!this.running) this.start();
-  }
+    function fadeInGeminiReply(reply, tag) {
+      page.classList.remove("fade-out-slow");
+      textEl.style.transition = "none";
+      titleEl.style.transition = "none";
+      tagEl.style.transition = "none";
+      textEl.style.opacity = "0";
+      titleEl.style.opacity = "0";
+      tagEl.style.opacity = "0";
 
-  start() {
-    this.running = true;
-    const tick = () => {
-      if (this.queue.length === 0) {
-        this.running = false;
+      titleEl.textContent = "Gemini";
+      textEl.textContent = reply;
+      textEl.classList.add("has-reply");
+      tagEl.textContent = tag || "hold mic to ask again";
+
+      requestAnimationFrame(() => {
+        textEl.style.transition = "";
+        titleEl.style.transition = "";
+        tagEl.style.transition = "";
+        textEl.offsetHeight;
+        textEl.style.opacity = "1";
+        titleEl.style.opacity = "1";
+        tagEl.style.opacity = "1";
+      });
+    }
+
+    // Permission once — keep stream alive so SpeechRecognition won't re-prompt
+    async function ensureMic() {
+      if (micStream && micStream.getTracks().some(t => t.readyState === "live")) {
+        return true;
+      }
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+        });
+        return true;
+      } catch (err) {
+        showError("Allow microphone once — then it won't ask again");
+        return false;
+      }
+    }
+
+    function getRecognition() {
+      if (recognition) return recognition;
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return null;
+      const r = new SR();
+      r.continuous = true;
+      r.interimResults = true;
+      r.lang = "en-US";
+      r.maxAlternatives = 1;
+
+      r.onresult = (event) => {
+        interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0].transcript;
+          if (event.results[i].isFinal) finalTranscript += t + " ";
+          else interimTranscript += t;
+        }
+        const display = (finalTranscript + interimTranscript).trim();
+        liveEl.textContent = display || "Listening…";
+        liveEl.classList.add("show");
+      };
+
+      r.onerror = (e) => {
+        isRecognizing = false;
+        if (e.error === "not-allowed") {
+          showError("Microphone permission denied");
+        }
+      };
+
+      // Never auto-restart — avoids permission loop
+      r.onend = () => {
+        isRecognizing = false;
+      };
+
+      recognition = r;
+      return r;
+    }
+
+    function startListening() {
+      finalTranscript = "";
+      interimTranscript = "";
+      liveEl.textContent = "Listening…";
+      liveEl.classList.add("show");
+
+      const r = getRecognition();
+      if (!r) {
+        showError("Speech recognition not supported — use Chrome");
+        return false;
+      }
+      if (isRecognizing) return true;
+      try {
+        r.start();
+        isRecognizing = true;
+        return true;
+      } catch (_) {
+        isRecognizing = true;
+        return true;
+      }
+    }
+
+    function stopListening() {
+      if (recognition && isRecognizing) {
+        try { recognition.stop(); } catch (_) {}
+        isRecognizing = false;
+      }
+      return (finalTranscript + interimTranscript).trim();
+    }
+
+    async function askGemini(text) {
+      const apiKey = apiKeyInput.value.trim();
+      const model = modelSelect.value;
+      if (!apiKey) throw new Error("Paste your Gemini API key at the top first");
+      if (!text) throw new Error("No speech detected — try again");
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const body = {
+        contents: [{ role: "user", parts: [{ text }] }]
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        let msg = "HTTP " + res.status;
+        try {
+          const err = await res.json();
+          msg = err.error?.message || msg;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+
+      const data = await res.json();
+      const reply = data.candidates?.[0]?.content?.parts
+        ?.map(p => p.text || "")
+        .join("") || "(empty response)";
+      return reply.trim();
+    }
+
+    async function startHold() {
+      if (holding || busy) return;
+
+      const ok = await ensureMic();
+      if (!ok) return;
+
+      if (!getRecognition()) {
+        showError("Speech recognition not supported — use Chrome");
         return;
       }
-      const take = Math.min(this.charsPerTick, this.queue.length);
-      this.displayed += this.queue.slice(0, take);
-      this.queue = this.queue.slice(take);
-      this.contentEl.textContent = this.displayed;
-      document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
-      setTimeout(tick, this.intervalMs);
-    };
-    tick();
-  }
 
-  // Wait until the queue is fully typed out
-  async flush() {
-    while (this.running || this.queue.length > 0) {
-      await new Promise(r => setTimeout(r, 20));
-    }
-  }
+      holding = true;
+      btn.classList.add("holding");
+      hint.classList.add("hide");
+      glassLayer.classList.add("active");
+      requestAnimationFrame(() => {
+        veil.classList.add("half");
+        veil2.classList.add("half");
+      });
+      page.classList.add("blurred");
+      spawnParticles();
 
-  get fullText() {
-    return this.displayed + this.queue;
-  }
-}
-
-async function sendMessage() {
-  const apiKey = document.getElementById('apiKey').value.trim();
-  const model = document.getElementById('model').value;
-  const input = document.getElementById('userInput');
-  const text = input.value.trim();
-  const sendBtn = document.getElementById('sendBtn');
-  const status = document.getElementById('status');
-
-  if (!apiKey) {
-    appendError('Please paste your Gemini API key above first.');
-    return;
-  }
-  if (!text) return;
-
-  appendMessage('user', text);
-  history.push({ role: 'user', parts: [{ text }] });
-  input.value = '';
-  sendBtn.disabled = true;
-  status.textContent = 'Thinking...';
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
-
-  const streaming = createStreamingMessage();
-  const typewriter = new Typewriter(streaming.contentEl);
-  let firstChunk = true;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: history })
-    });
-
-    if (!response.ok) {
-      let errMsg = `HTTP ${response.status}`;
-      try {
-        const errData = await response.json();
-        errMsg = errData.error?.message || errMsg;
-      } catch (_) {}
-      throw new Error(errMsg);
-    }
-
-    status.textContent = 'Streaming...';
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-
-      // Process complete SSE events (separated by \n\n)
-      let idx;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const event = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-
-        const lines = event.split('\n');
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr || jsonStr === '[DONE]') continue;
-
-          try {
-            const data = JSON.parse(jsonStr);
-            const chunkText = data.candidates?.[0]?.content?.parts
-              ?.map(p => p.text || '')
-              .join('') || '';
-
-            if (chunkText) {
-              if (firstChunk) {
-                firstChunk = false;
-                status.textContent = '';
-              }
-              // Feed into typewriter → appears with smooth typing animation
-              typewriter.add(chunkText);
-            }
-          } catch (e) {
-            // skip bad chunks
-          }
+      clearTimeout(breatheTimer);
+      breatheTimer = setTimeout(() => {
+        if (holding) {
+          veil.classList.add("breathe");
+          veil2.classList.add("breathe");
         }
+      }, 1500);
+
+      startListening();
+    }
+
+    async function endHold() {
+      if (!holding) return;
+      holding = false;
+      btn.classList.remove("holding");
+      clearTimeout(breatheTimer);
+      busy = true;
+
+      const spoken = stopListening();
+
+      // show transcript 1s
+      if (spoken) {
+        liveEl.textContent = spoken;
+        liveEl.classList.add("show");
+      } else {
+        liveEl.textContent = "No speech detected";
+        liveEl.classList.add("show");
       }
+
+      veil.classList.remove("breathe");
+      veil2.classList.remove("breathe");
+      requestAnimationFrame(() => {
+        veil.classList.remove("half");
+        veil2.classList.remove("half");
+        page.classList.remove("blurred");
+      });
+
+      setTimeout(() => liveEl.classList.remove("show"), 1000);
+
+      // after half collapse → Thinking, then wait for Gemini, THEN full wave
+      setTimeout(() => {
+        glassLayer.classList.remove("active");
+        runThinkingThenWave(spoken);
+      }, 1550);
     }
 
-    // leftover buffer
-    if (buffer.trim()) {
-      const lines = buffer.split('\n');
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr || jsonStr === '[DONE]') continue;
-        try {
-          const data = JSON.parse(jsonStr);
-          const chunkText = data.candidates?.[0]?.content?.parts
-            ?.map(p => p.text || '')
-            .join('') || '';
-          if (chunkText) typewriter.add(chunkText);
-        } catch (e) {}
+    async function runThinkingThenWave(spoken) {
+      btn.classList.add("thinking");
+
+      let reply = "";
+      let errMsg = null;
+
+      try {
+        reply = await askGemini(spoken);
+      } catch (err) {
+        errMsg = err.message || "Request failed";
       }
+
+      // Only after Gemini replies → remove Thinking and start full animation
+      btn.classList.remove("thinking");
+
+      glassLayer.classList.add("active");
+      page.classList.add("blurred");
+      spawnParticles();
+
+      requestAnimationFrame(() => {
+        veil.classList.add("full");
+        veil2.classList.add("full");
+        fadeOutTextSlow();
+      });
+
+      // expand 1.5s then de-expand + show reply
+      await new Promise(r => setTimeout(r, 1550));
+
+      veil.classList.remove("full");
+      veil2.classList.remove("full");
+      page.classList.remove("blurred");
+
+      if (errMsg) {
+        fadeInGeminiReply(errMsg, "try again");
+        showError(errMsg);
+      } else {
+        fadeInGeminiReply(reply, "hold mic to ask again");
+      }
+
+      setTimeout(() => {
+        glassLayer.classList.remove("active");
+        hint.classList.remove("hide");
+        busy = false;
+      }, 1550);
     }
 
-    // Wait for the typing animation to finish
-    await typewriter.flush();
+    btn.addEventListener("mousedown", (e) => { e.preventDefault(); startHold(); });
+    window.addEventListener("mouseup", endHold);
+    window.addEventListener("mouseleave", endHold);
 
-    const fullReply = typewriter.fullText || '(no response text)';
-    if (!typewriter.fullText) {
-      streaming.contentEl.textContent = fullReply;
-    }
+    btn.addEventListener("touchstart", (e) => { e.preventDefault(); startHold(); }, { passive: false });
+    window.addEventListener("touchend", endHold);
+    window.addEventListener("touchcancel", endHold);
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    // Remove blinking cursor
-    if (streaming.cursorEl) streaming.cursorEl.remove();
-
-    history.push({ role: 'model', parts: [{ text: fullReply }] });
-    status.textContent = '';
-  } catch (err) {
-    if (streaming.div && streaming.div.parentNode) {
-      streaming.div.remove();
-    }
-    appendError(err.message);
-    status.textContent = '';
-  } finally {
-    sendBtn.disabled = false;
-  }
-}
-</script>
-
+    const savedKey = localStorage.getItem("gemini_api_key");
+    if (savedKey) apiKeyInput.value = savedKey;
+    apiKeyInput.addEventListener("change", () => {
+      localStorage.setItem("gemini_api_key", apiKeyInput.value.trim());
+    });
+  </script>
 </body>
 </html>
