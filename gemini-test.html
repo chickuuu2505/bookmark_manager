@@ -256,6 +256,23 @@
       pointer-events: none;
     }
 
+    .mic-btn.listening {
+      background: #3a3a3c;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 4px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Invisible iOS switch for haptic feedback only */
+    .ios-haptic {
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      width: 51px;
+      height: 31px;
+      opacity: 0;
+      pointer-events: none;
+      margin: 0;
+    }
+
     .mic-btn svg {
       width: 20px;
       height: 20px;
@@ -462,7 +479,7 @@
   </div>
 
   <div class="live-transcript" id="liveTranscript"></div>
-  <div class="hint" id="hint">hold mic · speak · release</div>
+  <div class="hint" id="hint">tap to toggle · hold to talk</div>
   <div class="error-toast" id="errorToast"></div>
 
   <div class="glass-layer" id="glassLayer">
@@ -470,8 +487,11 @@
     <div class="liquid-veil-2" id="veil2"></div>
   </div>
 
+  <!-- Hidden switch: toggled only to trigger iOS haptic, never visible -->
+  <input type="checkbox" class="ios-haptic" id="iosHaptic" tabindex="-1" aria-hidden="true" />
+
   <div class="bottom-bar">
-    <button class="mic-btn" id="micBtn" aria-label="Hold to speak">
+    <button class="mic-btn" id="micBtn" aria-label="Tap to toggle or hold to talk">
       <svg class="icon" viewBox="0 0 24 24">
         <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
       </svg>
@@ -497,6 +517,10 @@
 
     let holding = false;
     let busy = false;
+    let continuousOn = false; // tap-to-toggle mode
+    let pressTimer = null;
+    let pressStartedAt = 0;
+    let isHoldMode = false;
     let breatheTimer = null;
     let particles = [];
     let micStream = null;
@@ -504,11 +528,38 @@
     let isRecognizing = false;
     let finalTranscript = "";
     let interimTranscript = "";
+    const HOLD_MS = 280; // longer than this = hold, shorter = tap
+    const iosHaptic = document.getElementById("iosHaptic");
 
     function showError(msg) {
       errorToast.textContent = msg;
       errorToast.classList.add("show");
       setTimeout(() => errorToast.classList.remove("show"), 4000);
+    }
+
+    // Android vibrate + invisible iOS switch toggle (during user gesture)
+    function vibratePulse() {
+      try {
+        if (navigator.vibrate) navigator.vibrate(25);
+      } catch (_) {}
+      if (iosHaptic) {
+        iosHaptic.checked = !iosHaptic.checked;
+      }
+    }
+
+    // Strip markdown stars / common formatting from Gemini replies
+    function cleanReply(text) {
+      if (!text) return text;
+      return text
+        .replace(/\*\*\*(.+?)\*\*\*/g, "$1")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/\*(.+?)\*/g, "$1")
+        .replace(/__(.+?)__/g, "$1")
+        .replace(/_(.+?)_/g, "$1")
+        .replace(/`{1,3}([^`]+)`{1,3}/g, "$1")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^\s*[-*+]\s+/gm, "• ")
+        .trim();
     }
 
     function spawnParticles() {
@@ -544,7 +595,7 @@
       tagEl.style.opacity = "0";
 
       titleEl.textContent = "Gemini";
-      textEl.textContent = reply;
+      textEl.textContent = cleanReply(reply);
       textEl.classList.add("has-reply");
       tagEl.textContent = tag || "hold mic to ask again";
 
@@ -676,19 +727,7 @@
       return reply.trim();
     }
 
-    async function startHold() {
-      if (holding || busy) return;
-
-      const ok = await ensureMic();
-      if (!ok) return;
-
-      if (!getRecognition()) {
-        showError("Speech recognition not supported — use Chrome");
-        return;
-      }
-
-      holding = true;
-      btn.classList.add("holding");
+    function expandHalfGlass() {
       hint.classList.add("hide");
       glassLayer.classList.add("active");
       requestAnimationFrame(() => {
@@ -697,66 +736,138 @@
       });
       page.classList.add("blurred");
       spawnParticles();
-
       clearTimeout(breatheTimer);
       breatheTimer = setTimeout(() => {
-        if (holding) {
+        if (holding || continuousOn) {
           veil.classList.add("breathe");
           veil2.classList.add("breathe");
         }
       }, 1500);
-
-      startListening();
     }
 
-    async function endHold() {
-      if (!holding) return;
-      holding = false;
-      btn.classList.remove("holding");
-      clearTimeout(breatheTimer);
-      busy = true;
+    function collapseHalfGlass() {
+      veil.classList.remove("breathe");
+      veil2.classList.remove("breathe");
+      veil.classList.remove("half");
+      veil2.classList.remove("half");
+      page.classList.remove("blurred");
+      setTimeout(() => {
+        if (!holding && !continuousOn && !busy) {
+          glassLayer.classList.remove("active");
+          hint.classList.remove("hide");
+        }
+      }, 1550);
+    }
 
+    async function beginListeningSession() {
+      const ok = await ensureMic();
+      if (!ok) return false;
+      if (!getRecognition()) {
+        showError("Speech recognition not supported — use Chrome");
+        return false;
+      }
+      vibratePulse();
+      expandHalfGlass();
+      startListening();
+      return true;
+    }
+
+    async function finishListeningSession() {
       const spoken = stopListening();
 
-      // show transcript 1s
       if (spoken) {
         liveEl.textContent = spoken;
         liveEl.classList.add("show");
+        setTimeout(() => liveEl.classList.remove("show"), 1000);
       } else {
-        liveEl.textContent = "No speech detected";
+        liveEl.textContent = "Speech is not detected";
         liveEl.classList.add("show");
+        setTimeout(() => liveEl.classList.remove("show"), 1500);
       }
 
-      veil.classList.remove("breathe");
-      veil2.classList.remove("breathe");
-      requestAnimationFrame(() => {
-        veil.classList.remove("half");
-        veil2.classList.remove("half");
-        page.classList.remove("blurred");
-      });
+      collapseHalfGlass();
 
-      setTimeout(() => liveEl.classList.remove("show"), 1000);
+      // No speech → no Thinking, no full animation
+      if (!spoken) {
+        busy = false;
+        btn.classList.remove("holding", "listening");
+        return;
+      }
 
-      // after half collapse → Thinking, then wait for Gemini, THEN full wave
+      busy = true;
       setTimeout(() => {
-        glassLayer.classList.remove("active");
         runThinkingThenWave(spoken);
       }, 1550);
     }
 
+    // --- Tap = toggle continuous · Hold = push-to-talk ---
+    async function onPressStart(e) {
+      e.preventDefault();
+      if (busy) return;
+
+      pressStartedAt = Date.now();
+      isHoldMode = false;
+
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(async () => {
+        // Became a hold
+        isHoldMode = true;
+        if (continuousOn) return; // already listening from tap mode
+        holding = true;
+        btn.classList.add("holding");
+        await beginListeningSession();
+      }, HOLD_MS);
+    }
+
+    async function onPressEnd(e) {
+      if (e) e.preventDefault();
+      clearTimeout(pressTimer);
+
+      const duration = Date.now() - pressStartedAt;
+
+      // TAP
+      if (!isHoldMode && duration < HOLD_MS) {
+        if (busy) return;
+
+        if (!continuousOn) {
+          // turn ON
+          continuousOn = true;
+          btn.classList.add("listening");
+          await beginListeningSession();
+        } else {
+          // turn OFF → process speech
+          continuousOn = false;
+          btn.classList.remove("listening");
+          holding = false;
+          await finishListeningSession();
+        }
+        return;
+      }
+
+      // HOLD release
+      if (holding) {
+        holding = false;
+        btn.classList.remove("holding");
+        if (!continuousOn) {
+          await finishListeningSession();
+        }
+      }
+      isHoldMode = false;
+    }
+
     async function runThinkingThenWave(spoken) {
       btn.classList.add("thinking");
+      btn.classList.remove("listening", "holding");
 
       let reply = "";
       let errMsg = null;
-
       try {
         reply = await askGemini(spoken);
       } catch (err) {
         errMsg = err.message || "Request failed";
       }
 
-      // Only after Gemini replies → remove Thinking and start full animation
+      // Only after reply → full glass animation
       btn.classList.remove("thinking");
 
       glassLayer.classList.add("active");
@@ -769,7 +880,6 @@
         fadeOutTextSlow();
       });
 
-      // expand 1.5s then de-expand + show reply
       await new Promise(r => setTimeout(r, 1550));
 
       veil.classList.remove("full");
@@ -780,7 +890,7 @@
         fadeInGeminiReply(errMsg, "try again");
         showError(errMsg);
       } else {
-        fadeInGeminiReply(reply, "hold mic to ask again");
+        fadeInGeminiReply(reply, "hold or tap mic");
       }
 
       setTimeout(() => {
@@ -790,13 +900,13 @@
       }, 1550);
     }
 
-    btn.addEventListener("mousedown", (e) => { e.preventDefault(); startHold(); });
-    window.addEventListener("mouseup", endHold);
-    window.addEventListener("mouseleave", endHold);
+    btn.addEventListener("mousedown", onPressStart);
+    window.addEventListener("mouseup", onPressEnd);
+    window.addEventListener("mouseleave", onPressEnd);
 
-    btn.addEventListener("touchstart", (e) => { e.preventDefault(); startHold(); }, { passive: false });
-    window.addEventListener("touchend", endHold);
-    window.addEventListener("touchcancel", endHold);
+    btn.addEventListener("touchstart", onPressStart, { passive: false });
+    window.addEventListener("touchend", onPressEnd);
+    window.addEventListener("touchcancel", onPressEnd);
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
 
     const savedKey = localStorage.getItem("gemini_api_key");
